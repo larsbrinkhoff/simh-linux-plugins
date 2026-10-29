@@ -1,9 +1,11 @@
-all: ding
+all: ding midi
 
 CFLAGS=-W -Wall
-LDLIBS=-lhidapi-libusb
+LDLIBS=-lhidapi-libusb -lasound
 
 ding: ding.o
 
+midi: midi.o
+
 clean:
-	rm -f ding *.o
+	rm -f ding midi *.o
