@@ -59,7 +59,7 @@
 #define PANEL_MEMORY_ADDRESS        20  //   12 ---> 
 #define PANEL_MEMORY_CONTENTS       21  //   12 ---> 
 #define PANEL_FILL_STEP             22  //    1 <--- 
-#define PANEL_EXAM_STEP             23  //    1 <--- 
+#define PANEL_STEP_EXAM             23  //    1 <--- 
 #define PANEL_FILL                  24  //    1 <--> 
 #define PANEL_EXAM                  25  //    1 <--> 
 #define PANEL_CYCLE_BY_CYCLE        26  //    1 <--> 
