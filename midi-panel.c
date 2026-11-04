@@ -6,13 +6,261 @@
 #include <alsa/asoundlib.h>
 #include "linc_panel.h"
 
+#define MAX(A,B) ((A) > (B) ? (A) : (B))
+
 static snd_seq_t *seq;
 static snd_seq_addr_t address;
 static snd_rawmidi_t *output;
-static unsigned lights = 0;
 static unsigned state[PANEL_ITEMS];
+static int items_in_group[5];
+static int current_group;
+static int current_selection;
 
 static void note_onoff(int i, int on);
+
+static void display_top_row(unsigned data, unsigned bits, unsigned start)
+{
+  static const int button[8] =
+    { 1, 4, 7, 10, 13, 16, 19, 21 };
+  unsigned mask = 1 << (bits - 1);
+  unsigned i;
+  for (i = start; i < start + bits; i++, mask >>= 1)
+    note_onoff(button[i], data & mask);
+}
+
+static void display_bottom_row(unsigned data, unsigned bits, unsigned start)
+{
+  static const int button[8] =
+    { 3, 6, 9, 12, 15, 18, 21, 24 };
+  unsigned mask = 1 << (bits - 1);
+  unsigned i;
+  for (i = start; i < start + bits; i++, mask >>= 1)
+    note_onoff(button[i], data & mask);
+}
+
+static void display_nothing(void) {}
+
+static void display_on_off(void)
+{
+  display_top_row(state[PANEL_ON_OFF], 1, 7);
+}
+
+static void display_run_pause(void)
+{
+  display_top_row(state[PANEL_RUN_PAUSE], 2, 5);
+}
+
+static void display_cycle(void)
+{
+  display_top_row(state[PANEL_CYCLE], 2, 3);
+}
+
+static void display_instruction(void)
+{
+  display_top_row(state[PANEL_INSTRUCTION] >> 6, 6, 0);
+  display_bottom_row(state[PANEL_INSTRUCTION], 6, 0);
+}
+
+static void display_clear(void)
+{
+  display_top_row(state[PANEL_CLEAR], 1, 1);
+}
+
+static void display_mark(void)
+{
+  display_top_row(state[PANEL_MARK], 1, 0);
+}
+
+static void display_relays(void)
+{
+  display_bottom_row(state[PANEL_RELAYS], 6, 0);
+}
+
+static void display_auto_restart(void)
+{
+  display_top_row(state[PANEL_AUTO_RESTART], 1, 7);
+}
+
+static void display_istop(void)
+{
+  display_top_row(state[PANEL_ISTOP], 1, 5);
+}
+
+static void display_xoestop(void)
+{
+  display_top_row(state[PANEL_XOESTOP], 1, 4);
+}
+
+static void display_instruction_location(void)
+{
+  display_top_row(state[PANEL_INSTRUCTION_LOCATION] >> 6, 4, 6);
+  display_bottom_row(state[PANEL_INSTRUCTION_LOCATION], 6, 0);
+}
+
+static void display_sense_switches(void)
+{
+  display_top_row(state[PANEL_SENSE_SWITCHES], 6, 0);
+}
+
+#if 0
+static void audio(void) { }
+  // delay
+static void start(void) { }
+static void start(void) { }
+static void start(void) { }
+#endif
+
+static void display_link(void)
+{
+  display_top_row(state[PANEL_LINK], 1, 6);
+}
+
+static void display_accumulator(void)
+{
+  display_top_row(state[PANEL_ACCUMULATOR] >> 6, 6, 6);
+  display_bottom_row(state[PANEL_ACCUMULATOR], 6, 0);
+}
+
+static void display_memory_address(void)
+{
+  display_top_row(state[PANEL_MEMORY_ADDRESS] >> 6, 6, 6);
+  display_bottom_row(state[PANEL_MEMORY_ADDRESS], 6, 0);
+}
+
+static void display_memory_contents(void)
+{
+  display_top_row(state[PANEL_MEMORY_ADDRESS] >> 6, 6, 6);
+  display_bottom_row(state[PANEL_MEMORY_ADDRESS], 6, 0);
+}
+
+static void display_fill_step(void)
+{
+}
+
+static void display_exam_step(void)
+{
+}
+
+static void display_cycle_by_cycle(void)
+{
+}
+
+static void display_instr_by_instr(void)
+{
+}
+
+static void display_resume(void)
+{
+}
+
+static void display_step(void)
+{
+}
+
+static void display_do_tog_instr(void)
+{
+}
+
+static void display_stop(void)
+{
+}
+
+static void display_left_switches(void)
+{
+}
+
+static void display_right_switches(void)
+{
+}
+
+static void display_gong_on_off(void)
+{
+}
+
+static void display_speaker_select(void)
+{
+}
+
+static void display_scope_knob_0(void)
+{
+}
+
+static void display_scope_knob_1(void)
+{
+}
+
+static void display_scope_knob_2(void)
+{
+}
+
+static void display_scope_knob_3(void)
+{
+}
+
+static void display_scope_knob_4(void)
+{
+}
+
+static void display_scope_knob_5(void)
+{
+}
+
+static void display_scope_knob_6(void)
+{
+}
+
+static void display_scope_knob_7(void)
+{
+}
+
+struct {
+  void (*display)(void);
+  int group;
+  int selection;
+} panel_group[PANEL_ITEMS] = {
+  { display_nothing,              0, 0 },
+  { display_on_off,               1, 0 },
+  { display_run_pause,            1, 0 },
+  { display_cycle,                1, 0 },
+  { display_instruction,          1, 1 },
+  { display_clear,                1, 2 },
+  { display_mark,                 1, 2 },
+  { display_relays,               1, 2 },
+  { display_auto_restart,         2, 0 },
+  { display_istop,                2, 0 },
+  { display_xoestop,              2, 0 },
+  { display_instruction_location, 2, 1 },
+  { display_sense_switches,       2, 2 },
+  // audio
+  // delay
+  // start 400
+  // start 200
+  // start rs
+  { display_link,                 3, 0 },
+  { display_accumulator,          3, 0 },
+  { display_memory_address,       3, 1 },
+  { display_memory_contents,      3, 2 },
+  { display_fill_step,            4, 0 },
+  { display_exam_step,            4, 0 },
+  { display_cycle_by_cycle,       4, 0 },
+  { display_instr_by_instr,       4, 0 },
+  { display_resume,               4, 0 },
+  { display_step,                 4, 0 },
+  { display_do_tog_instr,         4, 0 },
+  { display_stop,                 4, 0 },
+  { display_left_switches,        4, 1 },
+  { display_right_switches,       4, 2 },
+  { display_gong_on_off,          5, 0 },
+  { display_speaker_select,       5, 0 },
+  { display_scope_knob_0,         5, 0 },
+  { display_scope_knob_1,         5, 0 },
+  { display_scope_knob_2,         5, 0 },
+  { display_scope_knob_3,         5, 0 },
+  { display_scope_knob_4,         5, 0 },
+  { display_scope_knob_5,         5, 0 },
+  { display_scope_knob_6,         5, 0 },
+  { display_scope_knob_7,         5, 0 }
+};
 
 static const char *strerrno(void)
 {
@@ -61,14 +309,12 @@ static void open_mixer(const char *port)
 
 static void display(void)
 {
-  static const int button[12] =
-    { 1, 4, 7, 10, 13, 16,
-      3, 6, 9, 12, 15, 18 };
-  unsigned mask = 04000;
-  unsigned value = state[lights];
   int i;
-  for (i = 0; i < 12; i++, mask >>= 1)
-    note_onoff(button[i], value & mask);
+  for (i = 0; i < PANEL_ITEMS; i++) {
+    if (panel_group[i].group == current_group &&
+        panel_group[i].selection == current_selection)
+      panel_group[i].display();
+  }
 }
 
 static void write_event(snd_seq_event_t *event)
@@ -136,11 +382,27 @@ static void write_event(snd_seq_event_t *event)
             event->data.control.value);
     switch (event->data.control.param) {
     case 18:
-      lights = event->data.control.value >> 2;
-      fprintf(stderr, "Lights: %u\n", lights);
-      display();
-      return;
+      current_group = 1;
+      break;
+    case 21:
+      current_group = 2;
+      break;
+    case 24:
+      current_group = 3;
+      break;
+    case 27:
+      current_group = 4;
+      break;
+    case 30:
+      current_group = 5;
+      break;
     }
+    current_selection = event->data.control.value /
+      ((127 + items_in_group[current_group]) /
+       items_in_group[current_group]);
+    fprintf(stderr, "Group: %d, selection: %d\n",
+            current_group, current_selection);
+    display();
     return;
   default:
     fprintf(stderr, "Other\n");
@@ -181,7 +443,8 @@ static void handle_simh(void)
   value = (data[1] << 7) | data[2];
   state[item] = value;
 
-  if (item == lights)
+  if (panel_group[item].group == current_group &&
+      panel_group[item].selection == current_selection)
     display();
 }
 
@@ -227,26 +490,6 @@ static void note_onoff(int i, int on)
   int err = snd_rawmidi_write(output, data, sizeof data);
   if (err < 0)
     fail("Sending raw MIDI: %s", snd_strerror(err));
-
-#if 0
-
-  snd_seq_event_t event;
-  int err;
-
-  fprintf(stderr, "Note %d %s\n", i, on ? "on" : "off");
-  snd_seq_ev_clear(&event);
-  if (on)
-    snd_seq_ev_set_noteon(&event, 0, i, 127);
-  else
-    snd_seq_ev_set_noteoff(&event, 0, i, 0);
-  snd_seq_ev_set_direct(&event);
-  snd_seq_ev_set_subs(&event);
-  snd_seq_ev_set_source(&event, 0);
-  //snd_seq_ev_set_dest(&event, address.client, address.port);
-  err = snd_seq_event_output_direct(seq, &event);
-  if (err < 0)
-    fail("Error sending event: %s", snd_strerror(err));
-#endif
 }
 
 static void lights_off(void)
@@ -258,11 +501,20 @@ static void lights_off(void)
 
 int main(int argc, char **argv)
 {
+  unsigned i;
+
   if (!isatty(2))
     stderr = fopen("log", "w");
 
   if (argc != 3)
     usage(argv[0]);
+
+  memset(items_in_group, 0, sizeof items_in_group);
+  for (i = 0; i < sizeof panel_group / sizeof panel_group[0]; i++) {
+    int group = panel_group[i].group;
+    items_in_group[group] = MAX(items_in_group[group],
+                                panel_group[i].selection + 1);
+  }
 
   open_mixer(argv[1]);
 
