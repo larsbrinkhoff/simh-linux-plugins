@@ -70,11 +70,22 @@ static void display_bottom_row(unsigned data, unsigned bits, unsigned start)
     note_onoff(button[i], data & mask);
 }
 
+static void clear(void)
+{
+  display_top_row(0, 8, 0);
+  display_bottom_row(0, 8, 0);
+}
+
 static void nothing(void) {}
 
 static void display_on_off(void)
 {
-  display_top_row(state[PANEL_ON_OFF], 1, 7);
+  if (state[PANEL_ON_OFF])
+    display_top_row(1, 1, 7);
+  else {
+    clear();
+    exit(0);
+  }
 }
 
 static void display_run_pause(void)
@@ -324,7 +335,20 @@ static void panel_write(int item)
       fail("Writing data: %s", strerrno());
   }
 
-  fprintf(stderr, "Wrote item %d %05x\n", item, state[item]);
+  fprintf(stderr, "Wrote item %d %04o\n", item, state[item]);
+  fflush(stderr);
+}
+
+static void frob_on_off(int value, int bit)
+{
+  UNUSED(value);
+  UNUSED(bit);
+  if (value) {
+    state[PANEL_ON_OFF] = 0;
+    panel_write(PANEL_ON_OFF);
+    clear();
+    exit(0);
+  }
 }
 
 static void frob_left_switches(int value, int bit)
@@ -337,15 +361,33 @@ static void frob_left_switches(int value, int bit)
 
 static struct thing midi_nt[128] = {
   { 0, ignore, 0 },
+  { PANEL_ON_OFF, frob_on_off, 0 },
   { 0, ignore, 0 },
+  { 0, ignore, 0 }, //4
+  { 0, ignore, 0 }, //5
   { 0, ignore, 0 },
+  { 0, ignore, 0 }, //7
+
+  // PANEL_ISTOP  // 2 0
+  // PANEL_RESUME // 4 0
+  { PANEL_LEFT_SWITCHES, frob_left_switches, 11 }, // 4 1
+
   { 0, ignore, 0 },
-  { 0, ignore, 0 },
-  { 0, ignore, 0 },
-  { 0, ignore, 0 },
-  { PANEL_LEFT_SWITCHES, frob_left_switches, 11 },
-  { 0, ignore, 0 },
+
+  // PANEL_XOESTOP // 2 0
+  // PANEL_SENSE_SWITCHES // 2 2
+  // PANEL_ACCUMULATOR // 3 0
+  // PANEL_MEMORY_ADDRESS // 3 1
+  // PANEL_MEMORY_CONTENTS // 3 2
+  // PANEL_STEP // 4 0
+  // PANEL_LEFT_SWITCHES // 4 1
+  // PANEL_RIGHT_SWITCHES // 4 2
   { PANEL_LEFT_SWITCHES, frob_left_switches,  5 },
+
+  // PANEL_ACCUMULATOR // 3 0
+  // PANEL_MEMORY_ADDRESS // 3 1
+  // PANEL_MEMORY_CONTENTS // 3 2
+  // PANEL_MEMORY_CONTENTS // 3 2
   { PANEL_LEFT_SWITCHES, frob_left_switches, 10 },
   { 0, ignore, 0 },
   { PANEL_LEFT_SWITCHES, frob_left_switches,  4 },
@@ -466,19 +508,12 @@ static struct thing midi_nt[128] = {
   { 0, ignore, 0 }
 };
 
-static void clear(void)
-{
-  display_top_row(0, 8, 0);
-  display_bottom_row(0, 8, 0);
-}
-
 static void select_group(int value, int group)
 {
   current_group = group;
-  current_selection = value / (129 / 3);
-    current_selection = value /
-      ((127 + items_in_group[current_group]) /
-       items_in_group[current_group]);
+  current_selection = value /
+    ((127 + items_in_group[current_group]) /
+     items_in_group[current_group]);
   clear();
   display();
 }
@@ -722,6 +757,7 @@ static void handle_simh(void)
 
   item = data[0] & 0x7F;
   value = (data[1] << 7) | data[2];
+  fprintf(stderr, "SIMH: item %u value %u\n", item, value);
   state[item] = value;
   display_item(item);
 }
@@ -781,8 +817,10 @@ int main(int argc, char **argv)
 {
   unsigned i;
 
-  if (!isatty(2))
+  if (!isatty(2)) {
+    fclose(stderr);
     stderr = fopen("log", "w");
+  }
 
   if (argc != 3)
     usage(argv[0]);
@@ -811,6 +849,11 @@ int main(int argc, char **argv)
   fprintf(stderr, "Reading MIDI events from %d:0, sending to %s\n",
           snd_seq_client_id(seq), argv[2]);
   fflush(stderr);
+
+  state[PANEL_ON_OFF] = 1;
+  current_group = 1;
+  current_selection = 0;
+  display();
 
   for (;;)
     poll_inputs();
