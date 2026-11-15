@@ -1,5 +1,6 @@
 ding
 midi
 midi-panel
+template-panel
 *.o
 *~
